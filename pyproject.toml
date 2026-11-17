@@ -1,0 +1,31 @@
+[project]
+name = "mcp-elicitation-demo"
+version = "0.1.0"
+description = "FastAPI + FastMCP demo showcasing MCP Elicitation with plain tool calls"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "fastmcp>=2.11",
+    "python-dotenv>=1.0",
+    "openai>=1.40",
+    "pydantic>=2.7",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.uv]
+package = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mcp_elicitation_demo"]
+artifacts = ["src/mcp_elicitation_demo/static/**/*.html"]

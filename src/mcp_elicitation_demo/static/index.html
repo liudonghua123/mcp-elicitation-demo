@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f6f7fb">
+<title>MCP Elicitation Demo</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234056e4'/%3E%3Ctext x='16' y='22' font-size='18' font-family='sans-serif' font-weight='bold' fill='white' text-anchor='middle'%3EM%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #f6f7fb; --panel: #ffffff; --ink: #171e2e; --ink-soft: #626b7d;
+    --line: #e5e8f0; --line-soft: #eef0f6;
+    --accent: #4056e4; --accent-weak: #eef1ff; --accent-ink: #fff;
+    --ok: #0f8a5f; --ok-weak: #e8f7f0; --err: #c23a3a; --err-weak: #fdeeec;
+    --think-weak: #f4f1fa; --think-ink: #6b5b95; --think-line: #e3dbf2;
+    --tool-weak: #f0f4fd; --tool-ink: #2f4a8a; --tool-line: #d5e0f7;
+    --radius: 14px; --radius-sm: 10px;
+    --sans: -apple-system, "PingFang SC", "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body { margin: 0; font-family: var(--sans); background: var(--bg); color: var(--ink);
+         display: flex; flex-direction: column; overscroll-behavior-y: none; }
+
+  /* ---------- header ---------- */
+  header {
+    display: flex; align-items: center; gap: .6rem;
+    padding: .7rem max(.9rem, env(safe-area-inset-left)) .7rem max(.9rem, env(safe-area-inset-right));
+    background: color-mix(in srgb, var(--panel) 88%, transparent);
+    backdrop-filter: blur(10px); border-bottom: 1px solid var(--line);
+    position: sticky; top: 0; z-index: 20;
+  }
+  .logo {
+    width: 30px; height: 30px; border-radius: 9px; flex: none;
+    background: linear-gradient(135deg, #4056e4, #7a5af8);
+    display: grid; place-items: center; color: #fff; font-size: .95rem; font-weight: 700;
+  }
+  .titles { flex: 1; min-width: 0; }
+  .titles h1 { margin: 0; font-size: .98rem; letter-spacing: .01em; }
+  .titles .sub { font-size: .72rem; color: var(--ink-soft); white-space: nowrap;
+                 overflow: hidden; text-overflow: ellipsis; }
+  .hbtn {
+    flex: none; border: 1px solid var(--line); background: var(--panel); color: var(--ink-soft);
+    border-radius: 999px; padding: .4rem .8rem; font-size: .78rem; cursor: pointer; font-family: inherit;
+    display: inline-flex; align-items: center; gap: .35rem; transition: all .15s;
+  }
+  .hbtn:hover { border-color: var(--accent); color: var(--accent); }
+  .hbtn.dirty { border-color: var(--accent); color: var(--accent); background: var(--accent-weak); }
+  .hbtn svg { width: 13px; height: 13px; }
+  @media (max-width: 480px) { .hbtn span.lbl { display: none; } .hbtn { padding: .4rem .55rem; } }
+
+  /* ---------- thread ---------- */
+  main { flex: 1; overflow-y: auto; padding: 1rem max(.8rem, env(safe-area-inset-left)); }
+  .thread { max-width: 820px; margin: 0 auto; display: flex; flex-direction: column; gap: .7rem; }
+
+  .row { display: flex; }
+  .row.user { justify-content: flex-end; }
+  .bubble {
+    max-width: min(86%, 620px); padding: .6rem .9rem; border-radius: var(--radius);
+    line-height: 1.6; font-size: .92rem; white-space: pre-wrap; word-break: break-word;
+    animation: rise .18s ease-out;
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
+  .row.user .bubble { background: var(--accent); color: var(--accent-ink); border-bottom-right-radius: 5px; }
+  .row.bot  .bubble { background: var(--panel); border: 1px solid var(--line); border-bottom-left-radius: 5px; }
+  .bubble.hide { display: none; }
+  .bubble .cursor { display: inline-block; width: 7px; height: 1em; vertical-align: -2px;
+                    background: var(--accent); border-radius: 2px; animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ---------- collapsible blocks ---------- */
+  .fold {
+    max-width: min(94%, 700px); border-radius: var(--radius-sm); overflow: hidden;
+    border: 1px solid var(--line); background: var(--panel); font-size: .82rem;
+    animation: rise .18s ease-out;
+  }
+  .fold > .head {
+    display: flex; align-items: center; gap: .5rem; width: 100%;
+    padding: .5rem .7rem; border: 0; background: transparent; cursor: pointer;
+    font: inherit; color: var(--ink-soft); text-align: left; font-family: inherit;
+  }
+  .fold > .head:hover { background: var(--line-soft); }
+  .fold .chev { flex: none; transition: transform .18s; width: 14px; height: 14px; }
+  .fold.open .chev { transform: rotate(90deg); }
+  .fold .head .tt { flex: 1; min-width: 0; font-weight: 600; font-size: .8rem;
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fold .head .meta { flex: none; font-size: .7rem; color: var(--ink-soft); font-weight: 400; }
+  .fold .body { display: none; padding: .55rem .8rem .7rem; border-top: 1px solid var(--line-soft);
+                white-space: pre-wrap; word-break: break-word; line-height: 1.55; }
+  .fold.open .body { display: block; }
+  .fold.think { background: var(--think-weak); border-color: var(--think-line); }
+  .fold.think > .head { color: var(--think-ink); }
+  .fold.think .body { color: var(--think-ink); font-size: .8rem; border-top-color: var(--think-line); }
+  .fold.think .head .tt::before { content: "✦ "; }
+  .fold.tool .head .tt { color: var(--tool-ink); }
+  .fold.tool { background: var(--tool-weak); border-color: var(--tool-line); }
+  .fold.tool .body { padding: 0; }
+  .fold.tool .tabs { display: flex; border-bottom: 1px solid var(--tool-line); background: var(--panel); }
+  .fold.tool .tabs button {
+    flex: 1; border: 0; background: transparent; padding: .45rem 0; font: inherit;
+    font-size: .74rem; color: var(--ink-soft); cursor: pointer; border-bottom: 2px solid transparent;
+    font-family: inherit;
+  }
+  .fold.tool .tabs button.on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  .fold.tool .pane { display: none; padding: .55rem .8rem .7rem; white-space: pre-wrap;
+                     word-break: break-word; font-family: var(--mono); font-size: .76rem; line-height: 1.5; }
+  .fold.tool .pane.on { display: block; }
+  .fold.elicit { background: #fff8ea; border-color: #f0d9a0; }
+  .fold.elicit > .head { color: #8a6414; }
+  .fold.err { background: var(--err-weak); border-color: #f2c5c0; }
+  .fold.err > .head, .fold.err .body { color: var(--err); }
+  .spin { width: 13px; height: 13px; flex: none; border: 2px solid var(--tool-line);
+          border-top-color: var(--accent); border-radius: 50%; animation: rot .7s linear infinite; }
+  @keyframes rot { to { transform: rotate(360deg); } }
+  .okdot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--ok); }
+
+  /* ---------- composer ---------- */
+  footer { background: var(--panel); border-top: 1px solid var(--line);
+           padding: .65rem max(.8rem, env(safe-area-inset-left)) calc(.65rem + env(safe-area-inset-bottom)); }
+  .composer { max-width: 820px; margin: 0 auto; display: flex; gap: .5rem; align-items: flex-end; }
+  .composer .box {
+    flex: 1; display: flex; align-items: flex-end; border: 1px solid var(--line);
+    border-radius: 12px; background: var(--bg); padding: .15rem .2rem .15rem .8rem;
+    transition: border-color .15s;
+  }
+  .composer .box:focus-within { border-color: var(--accent); }
+  .composer textarea {
+    flex: 1; border: 0; background: transparent; resize: none; outline: none;
+    font: inherit; font-size: .95rem; line-height: 1.5; padding: .45rem 0; max-height: 120px;
+    color: var(--ink);
+  }
+  .composer .go {
+    flex: none; border: 0; background: var(--accent); color: #fff; border-radius: 10px;
+    width: 38px; height: 38px; cursor: pointer; display: grid; place-items: center; transition: opacity .15s;
+  }
+  .composer .go:disabled { opacity: .45; cursor: not-allowed; }
+  .composer .go svg { width: 17px; height: 17px; }
+  .chips { max-width: 820px; margin: .5rem auto 0; display: flex; gap: .4rem;
+           overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: none; font: inherit; font-size: .74rem; padding: .32rem .7rem; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink-soft); cursor: pointer;
+    transition: all .15s; font-family: inherit;
+  }
+  .chip:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ---------- settings drawer ---------- */
+  .scrim { position: fixed; inset: 0; background: rgba(15,20,35,.4); z-index: 40;
+           opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .scrim.show { opacity: 1; pointer-events: auto; }
+  .drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; width: min(92vw, 380px); z-index: 41;
+    background: var(--panel); box-shadow: -12px 0 40px rgba(15,20,35,.18);
+    transform: translateX(105%); transition: transform .25s cubic-bezier(.2,.8,.3,1);
+    display: flex; flex-direction: column;
+  }
+  .drawer.show { transform: none; }
+  .drawer .dhead { display: flex; align-items: center; justify-content: space-between;
+                   padding: .9rem 1rem; border-bottom: 1px solid var(--line); }
+  .drawer .dhead h2 { margin: 0; font-size: .95rem; }
+  .drawer .dhead button { border: 0; background: none; font-size: 1.25rem; color: var(--ink-soft);
+                          cursor: pointer; line-height: 1; padding: .2rem; }
+  .dbody { flex: 1; overflow-y: auto; padding: 1rem; }
+  .dbody .note { font-size: .74rem; color: var(--ink-soft); background: var(--line-soft);
+                 border-radius: var(--radius-sm); padding: .55rem .7rem; line-height: 1.5; margin-bottom: 1rem; }
+  .dbody label { display: block; font-size: .76rem; font-weight: 600; color: var(--ink-soft); margin: .9rem 0 .3rem; }
+  .dbody input {
+    width: 100%; padding: .55rem .7rem; border: 1px solid var(--line); border-radius: var(--radius-sm);
+    font: inherit; font-size: .86rem; background: var(--bg); color: var(--ink);
+  }
+  .dbody input:focus { outline: 2px solid #c8d4ff; border-color: var(--accent); background: #fff; }
+  .dbody .row2 { display: flex; gap: .5rem; }
+  .dfoot { padding: .8rem 1rem calc(.8rem + env(safe-area-inset-bottom)); border-top: 1px solid var(--line);
+           display: flex; gap: .5rem; }
+  .dfoot button { flex: 1; padding: .6rem 0; border-radius: var(--radius-sm); font: inherit;
+                  font-size: .85rem; cursor: pointer; border: 1px solid var(--line); background: var(--panel); }
+  .dfoot .save { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .cur-model { font-size: .74rem; color: var(--ink-soft); margin-top: .8rem; line-height: 1.6;
+               background: var(--accent-weak); border-radius: var(--radius-sm); padding: .55rem .7rem; }
+  .cur-model b { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">M</div>
+  <div class="titles">
+    <h1>MCP Elicitation Demo</h1>
+    <div class="sub" id="modelLine">model: 加载中…</div>
+  </div>
+  <button class="hbtn" id="btnClear" title="清空对话">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/></svg><span class="lbl">清空</span>
+  </button>
+  <button class="hbtn" id="btnSettings" title="设置">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/></svg><span class="lbl">设置</span>
+  </button>
+</header>
+
+<main id="main"><div class="thread" id="thread"></div></main>
+
+<footer>
+  <div class="chips" id="chips">
+    <button class="chip" data-q="掷一个20面骰子">🎲 掷骰子</button>
+    <button class="chip" data-q="帮我订一张昆明的餐桌，4个人">🍽️ 订餐桌（表单）</button>
+    <button class="chip" data-q="帮我支付42.5元">💰 支付确认</button>
+    <button class="chip" data-q="帮我评估一下贷款风险">📉 风险评估</button>
+    <button class="chip" data-q="从文本中抽取实体：Tim Cook 在西雅图见了 Satya Nadella">🏷️ 实体抽取</button>
+  </div>
+  <div class="composer">
+    <div class="box">
+      <textarea id="input" rows="1" placeholder="输入消息，Enter 发送…"></textarea>
+      <button class="go" id="send" title="发送">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+      </button>
+    </div>
+  </div>
+</footer>
+
+<!-- settings drawer -->
+<div class="scrim" id="escrim"></div>
+<div class="drawer" id="drawer">
+  <div class="dhead"><h2>⚙️ 模型设置</h2><button id="dclose">✕</button></div>
+  <div class="dbody">
+    <div class="note">留空则使用服务端 .env 中的默认配置。密钥仅保存在当前浏览器（localStorage），随请求发送到本服务。</div>
+    <label>Base URL（OpenAI 兼容）</label>
+    <input id="s-base" type="text" placeholder="https://api.example.com/v1">
+    <label>API Key</label>
+    <input id="s-key" type="password" placeholder="sk-...">
+    <label>Model</label>
+    <input id="s-model" type="text" placeholder="zai-org/GLM-5.3-Flash">
+    <div class="cur-model" id="curModel"></div>
+  </div>
+  <div class="dfoot">
+    <button id="dreset">恢复默认</button>
+    <button id="dsave" class="save">保存</button>
+  </div>
+</div>
+
+<!-- elicitation modal -->
+<div class="scrim" id="mscrim"></div>
+<div style="position:fixed;inset:0;z-index:45;display:none;align-items:center;justify-content:center;padding:1rem" id="mwrap">
+  <div style="background:var(--panel);border-radius:var(--radius);width:100%;max-width:420px;padding:1.1rem 1.2rem;box-shadow:0 18px 50px rgba(15,22,40,.25)">
+    <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.2rem">
+      <span style="width:8px;height:8px;border-radius:50%;background:#e8a13c;flex:none"></span>
+      <h3 id="m-title" style="margin:0;font-size:.95rem;flex:1">需要你提供信息</h3>
+    </div>
+    <div style="color:var(--ink-soft);font-size:.75rem;margin-bottom:.9rem">MCP 服务器正在等待输入（elicitation）</div>
+    <div id="m-fields"></div>
+    <div id="m-confirm-row" style="display:none;margin-top:.9rem;font-size:.88rem;align-items:center;gap:.5rem">
+      <input type="checkbox" id="m-confirm" style="width:16px;height:16px"><label for="m-confirm">确认执行</label>
+    </div>
+    <div style="display:flex;gap:.5rem;margin-top:1.1rem;justify-content:flex-end">
+      <button id="m-cancel" style="font:inherit;font-size:.84rem;padding:.45rem .95rem;border-radius:8px;border:1px solid var(--line);background:var(--panel);cursor:pointer">取消</button>
+      <button id="m-decline" style="font:inherit;font-size:.84rem;padding:.45rem .95rem;border-radius:8px;border:1px solid var(--line);background:var(--panel);cursor:pointer">拒绝</button>
+      <button id="m-submit" style="font:inherit;font-size:.84rem;padding:.45rem 1.1rem;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;font-weight:600">提交</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const thread = $("#thread"), main = $("#main");
+const input = $("#input"), sendBtn = $("#send");
+const sessionId = "web-" + Math.random().toString(36).slice(2, 10);
+const esc = (s) => { const d = document.createElement("div"); d.textContent = s ?? ""; return d.innerHTML; };
+
+/* ---------- settings ---------- */
+const LS_KEY = "mcp-demo-llm-override";
+function loadOverride() { try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; } }
+function saveOverride(o) { localStorage.setItem(LS_KEY, JSON.stringify(o)); }
+let override = loadOverride();
+
+const drawer = $("#drawer"), scrim = $("#escrim"), mscrim = $("#mscrim"), mwrap = $("#mwrap");
+function openDrawer() {
+  $("#s-base").value = override.base_url || "";
+  $("#s-key").value = override.api_key || "";
+  $("#s-model").value = override.model || "";
+  refreshCurModel();
+  drawer.classList.add("show"); scrim.classList.add("show");
+}
+function closeDrawer() { drawer.classList.remove("show"); scrim.classList.remove("show"); }
+function refreshCurModel() {
+  const b = $("#s-base").value.trim(), m = $("#s-model").value.trim(), k = $("#s-key").value.trim();
+  $("#curModel").innerHTML =
+    "当前生效：<br>model <b>" + esc(m || "服务端默认") + "</b><br>base " +
+    esc(b ? (b.slice(0, 28) + (b.length > 28 ? "…" : "")) : "服务端默认") +
+    "<br>key " + (k ? "已覆盖" : "服务端默认");
+}
+["#s-base", "#s-key", "#s-model"].forEach((s) => $(s).addEventListener("input", refreshCurModel));
+$("#btnSettings").onclick = openDrawer;
+$("#dclose").onclick = closeDrawer;
+scrim.onclick = closeDrawer;
+$("#dsave").onclick = () => {
+  override = {
+    base_url: $("#s-base").value.trim() || null,
+    api_key: $("#s-key").value.trim() || null,
+    model: $("#s-model").value.trim() || null,
+  };
+  saveOverride(override);
+  refreshModelLine(); closeDrawer();
+};
+$("#dreset").onclick = () => {
+  override = {}; saveOverride(override);
+  $("#s-base").value = ""; $("#s-key").value = ""; $("#s-model").value = "";
+  refreshCurModel(); refreshModelLine();
+};
+function refreshModelLine() {
+  const m = override.model || "服务端默认模型";
+  $("#modelLine").textContent = "model: " + m;
+  $("#btnSettings").classList.toggle("dirty", !!(override.base_url || override.api_key || override.model));
+}
+refreshModelLine();
+
+/* ---------- markdown-lite ---------- */
+function mdLite(s) {
+  let h = esc(s);
+  h = h.replace(/```([\s\S]*?)```/g, (_, c) => "<pre style=\"margin:.4rem 0;padding:.6rem .7rem;background:var(--line-soft);border-radius:8px;font-family:var(--mono);font-size:.78rem;white-space:pre-wrap\">" + c + "</pre>");
+  h = h.replace(/`([^`\n]+)`/g, "<code style=\"background:var(--line-soft);padding:.08rem .3rem;border-radius:4px;font-family:var(--mono);font-size:.82em\">$1</code>");
+  h = h.replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>");
+  h = h.replace(/^### (.+)$/gm, "<div style=\"font-weight:700;margin:.5rem 0 .2rem\">$1</div>");
+  h = h.replace(/^## (.+)$/gm, "<div style=\"font-weight:700;margin:.5rem 0 .2rem\">$1</div>");
+  h = h.replace(/^- (.+)$/gm, "<div style=\"padding-left:1em\">• $1</div>");
+  return h;
+}
+
+/* ---------- thread UI ---------- */
+let autoScroll = true;
+main.addEventListener("scroll", () => {
+  autoScroll = main.scrollHeight - main.scrollTop - main.clientHeight < 60;
+});
+function scrollBottom() { if (autoScroll) main.scrollTop = main.scrollHeight; }
+
+function addUser(text) {
+  const row = document.createElement("div"); row.className = "row user";
+  const b = document.createElement("div"); b.className = "bubble"; b.textContent = text;
+  row.appendChild(b); thread.appendChild(row); scrollBottom();
+}
+
+function makeFold(cls, titleHTML, metaHTML) {
+  const fold = document.createElement("div"); fold.className = "fold " + cls;
+  const head = document.createElement("button"); head.className = "head";
+  head.innerHTML = '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>'
+    + '<span class="tt">' + titleHTML + '</span><span class="meta">' + (metaHTML || "") + '</span>';
+  const body = document.createElement("div"); body.className = "body";
+  head.onclick = () => fold.classList.toggle("open");
+  fold.appendChild(head); fold.appendChild(body);
+  thread.appendChild(fold); scrollBottom();
+  return { fold, head, body };
+}
+
+function addThinking() {
+  const { fold, head, body } = makeFold("think", "思考中…", "");
+  const spin = document.createElement("span"); spin.className = "spin";
+  head.querySelector(".meta").replaceWith(spin);
+  let text = "";
+  return {
+    push(t) { text += t; body.textContent = text; fold.classList.add("open"); scrollBottom(); },
+    finish() {
+      spin.remove();
+      const meta = document.createElement("span"); meta.className = "meta";
+      meta.textContent = "已完成 · 点击展开";
+      head.appendChild(meta);
+      head.querySelector(".tt").textContent = "深度思考";
+      fold.classList.remove("open");
+    },
+  };
+}
+
+function addToolCard(name) {
+  const { fold, head, body } = makeFold("tool", "调用工具 <b>" + esc(name) + "</b>", "");
+  const spin = document.createElement("span"); spin.className = "spin";
+  head.querySelector(".meta").replaceWith(spin);
+  // tabs: input / output
+  const tabs = document.createElement("div"); tabs.className = "tabs";
+  tabs.innerHTML = '<button data-p="in" class="on">Input</button><button data-p="out">Output</button>';
+  const paneIn = document.createElement("div"); paneIn.className = "pane on";
+  const paneOut = document.createElement("div"); paneOut.className = "pane";
+  paneOut.textContent = "等待执行…";
+  body.appendChild(tabs); body.appendChild(paneIn); body.appendChild(paneOut);
+  tabs.querySelectorAll("button").forEach((b) => b.onclick = (e) => {
+    e.stopPropagation();
+    tabs.querySelectorAll("button").forEach((x) => x.classList.remove("on"));
+    b.classList.add("on");
+    paneIn.classList.toggle("on", b.dataset.p === "in");
+    paneOut.classList.toggle("on", b.dataset.p === "out");
+  });
+  head.onclick = () => fold.classList.toggle("open");
+  return {
+    setInput(args) { paneIn.textContent = JSON.stringify(args, null, 2); },
+    setOutput(text) {
+      paneOut.textContent = text;
+      spin.remove();
+      const ok = document.createElement("span"); ok.className = "okdot";
+      const meta = document.createElement("span"); meta.className = "meta"; meta.textContent = "完成";
+      head.appendChild(ok); head.appendChild(meta);
+    },
+    outputEl: paneOut,
+  };
+}
+
+function addError(msg) {
+  const { fold, body } = makeFold("err", "出错了", "");
+  body.textContent = msg; fold.classList.add("open");
+}
+
+/* ---------- elicitation modal ---------- */
+let currentElicit = null;
+function openElicitation(ev) {
+  currentElicit = { id: ev.id, schema: ev.schema || {} };
+  $("#m-title").textContent = ev.message || "需要你提供信息";
+  const fields = $("#m-fields"); fields.innerHTML = "";
+  const props = (ev.schema && ev.schema.properties) || {};
+  const keys = Object.keys(props);
+  const required = new Set(ev.schema.required || keys);
+  const cRow = $("#m-confirm-row");
+  if (keys.length === 0) {
+    // nothing to ask: auto-accept an empty form
+    fields.innerHTML = '<div style="font-size:.86rem;color:var(--ink-soft)">信息完整，无需补充。</div>';
+    cRow.style.display = "none";
+    answerElicit("accept");
+    return;
+  }
+  if (keys.length === 1 && keys[0] === "value" && props.value.type === "boolean") {
+    fields.innerHTML = '<div style="font-size:.86rem;color:var(--ink-soft)">请选择是否继续：</div>';
+    cRow.style.display = "flex"; $("#m-confirm").checked = false;
+  } else {
+    cRow.style.display = "none";
+    for (const name of keys) {
+      const spec = props[name] || {};
+      const isEnum = spec.type === "string" && Array.isArray(spec.enum);
+      const enumItems = spec.type === "array" && spec.items
+        ? (Array.isArray(spec.items.enum) ? spec.items.enum
+           : Array.isArray(spec.items.oneOf) ? spec.items.oneOf.map((o) => o.const)
+           : null)
+        : null;
+      const isMulti = spec.type === "array" && !!enumItems;
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "margin:.65rem 0 .3rem";
+      const lab = document.createElement("label");
+      lab.style.cssText = "display:block;font-size:.76rem;font-weight:600;color:var(--ink-soft);margin:0 0 .3rem";
+      const reqMark = required.has(name) ? '<span style="color:var(--err)">*</span> ' : "";
+      const typeMeta = isMulti ? " · multi" : spec.type ? " · " + spec.type : "";
+      lab.innerHTML = reqMark + esc(spec.description || name) + esc(typeMeta);
+      wrap.appendChild(lab);
+
+      if (isEnum || isMulti) {
+        // titled options: oneOf [{const,title}] wins over raw enum values
+        const titles = {};
+        (spec.oneOf || []).forEach((o) => { if (o.const != null) titles[o.const] = o.title || o.const; });
+        (spec.items?.oneOf || []).forEach((o) => { if (o.const != null) titles[o.const] = o.title || o.const; });
+        const values = isEnum ? spec.enum : enumItems;
+        const group = document.createElement("div");
+        group.style.cssText = "display:flex;flex-wrap:wrap;gap:.4rem";
+        const inpType = isEnum ? "radio" : "checkbox";
+        values.forEach((v) => {
+          const opt = document.createElement("label");
+          opt.style.cssText = "display:inline-flex;align-items:center;gap:.3rem;padding:.32rem .65rem;border:1px solid var(--line);border-radius:999px;font-size:.8rem;cursor:pointer;background:var(--bg);transition:all .15s;user-select:none";
+          const inp = document.createElement("input");
+          inp.type = inpType;
+          inp.name = isEnum ? "m-" + name : undefined;
+          inp.value = v;
+          inp.dataset.field = name;
+          inp.dataset.ftype = isMulti ? "array" : "enum";
+          if (!isEnum) inp.style.accentColor = "var(--accent)";
+          opt.appendChild(inp);
+          opt.appendChild(document.createTextNode(" " + (titles[v] || v)));
+          group.appendChild(opt);
+        });
+        // highlight checked pills
+        group.addEventListener("change", () => {
+          group.querySelectorAll("label").forEach((o) => {
+            const i = o.querySelector("input");
+            o.style.borderColor = i.checked ? "var(--accent)" : "var(--line)";
+            o.style.background = i.checked ? "var(--accent-weak)" : "var(--bg)";
+            o.style.color = i.checked ? "var(--accent)" : "var(--ink-soft)";
+          });
+        });
+        wrap.appendChild(group);
+        fields.appendChild(wrap);
+        continue;
+      }
+
+      fields.appendChild(lab);
+      const inp = document.createElement("input");
+      // input type: pickers for date/time, number for numeric, else text
+      if (spec.format === "date" || spec.format === "time" || spec.format === "date-time") {
+        inp.type = spec.format;
+      } else if (spec.type === "number" || spec.type === "integer") {
+        inp.type = "number";
+      } else {
+        inp.type = "text";
+      }
+      // JSON-schema constraints -> native validation attributes
+      if (spec.pattern) inp.pattern = spec.pattern;
+      if (spec.minLength != null) inp.minLength = spec.minLength;
+      if (spec.maxLength != null) inp.maxLength = spec.maxLength;
+      if (spec.minimum != null) inp.min = spec.minimum;
+      if (spec.maximum != null) inp.max = spec.maximum;
+      if (spec.multipleOf != null) inp.step = spec.multipleOf;
+      if (spec.format === "time") inp.step = 60;   // minute granularity
+      inp.required = required.has(name);
+      inp.dataset.field = name; inp.dataset.ftype = spec.type || "string";
+      inp.style.cssText = "width:100%;padding:.55rem .7rem;border:1px solid var(--line);border-radius:10px;font:inherit;font-size:.9rem";
+      inp.placeholder = spec.description || name;
+      inp.autocomplete = "off";
+      fields.appendChild(inp);
+    }
+  }
+  mwrap.style.display = "flex"; mscrim.classList.add("show");
+  const first = fields.querySelector("input"); if (first) setTimeout(() => first.focus(), 60);
+}
+function closeElicit() { mwrap.style.display = "none"; mscrim.classList.remove("show"); currentElicit = null; }
+async function answerElicit(action) {
+  if (!currentElicit) return;
+  let content = null;
+  if (action === "accept") {
+    const props = currentElicit.schema.properties || {};
+    if (Object.keys(props).length === 1 && props.value && props.value.type === "boolean") {
+      content = { value: $("#m-confirm").checked };
+    } else {
+      // validate every field; block submit and highlight invalid ones
+      const inputs = [...document.querySelectorAll("#m-fields input")]
+        .filter((i) => i.type !== "checkbox" || i.checked || !i.dataset.ftype || i.dataset.ftype !== "array");
+      let firstBad = null;
+      for (const inp of inputs) {
+        const ok = inp.checkValidity();
+        if (!ok && !firstBad) firstBad = inp;
+      }
+      if (firstBad) { firstBad.reportValidity(); firstBad.focus(); return; }
+      content = {};
+      // enum (radio) + array (checkbox) groups first
+      const props2 = currentElicit.schema.properties || {};
+      for (const [fname, spec] of Object.entries(props2)) {
+        const isEnum = spec.type === "string" && Array.isArray(spec.enum);
+        const isMulti = spec.type === "array";
+        if (isEnum) {
+          const sel = document.querySelector('#m-fields input[name="m-' + fname + '"]:checked');
+          if (sel) content[fname] = sel.value;
+          else if ((currentElicit.schema.required || []).includes(fname)) {
+            // required enum not picked: highlight group and block
+            const g = document.querySelector('#m-fields input[name="m-' + fname + '"]');
+            if (g) { g.reportValidity?.(); g.focus(); }
+            return;
+          }
+        } else if (isMulti) {
+          content[fname] = [...document.querySelectorAll('#m-fields input[data-field="' + fname + '"]:checked')].map((i) => i.value);
+        }
+      }
+      // plain inputs (skip radio/checkbox which were handled above)
+      inputs.forEach((inp) => {
+        if (inp.type === "radio" || inp.type === "checkbox") return;
+        const v = inp.value.trim(); if (!v) return;
+        if (inp.dataset.ftype === "integer") content[inp.dataset.field] = parseInt(v, 10);
+        else if (inp.dataset.ftype === "number") content[inp.dataset.field] = parseFloat(v);
+        else content[inp.dataset.field] = v;
+      });
+    }
+  }
+  const payload = { session_id: sessionId, id: currentElicit.id, action, content };
+  closeElicit();
+  try {
+    const r = await fetch("/api/elicitation/respond", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    });
+    if (!r.ok) console.error("respond failed", await r.text());
+  } catch (e) { console.error(e); }
+}
+$("#m-submit").onclick = () => answerElicit("accept");
+$("#m-decline").onclick = () => answerElicit("decline");
+$("#m-cancel").onclick = () => answerElicit("cancel");
+mscrim.onclick = () => answerElicit("cancel");
+
+/* ---------- chat over SSE ---------- */
+let busy = false;
+async function send(text) {
+  if (busy || !text.trim()) return;
+  busy = true; sendBtn.disabled = true; autoScroll = true;
+  addUser(text);
+
+  const bubble = document.createElement("div"); bubble.className = "bubble hide";
+  const botRow = document.createElement("div"); botRow.className = "row bot";
+  botRow.appendChild(bubble); thread.appendChild(botRow);
+  let answer = "", cursor = null;
+  const showCursor = () => { if (!cursor) { cursor = document.createElement("span"); cursor.className = "cursor"; bubble.appendChild(cursor); } };
+  const hideCursor = () => { if (cursor) { cursor.remove(); cursor = null; } };
+  const appendAnswer = (t) => {
+    answer += t;
+    if (cursor) { cursor.remove(); }
+    bubble.innerHTML = mdLite(answer);
+    if (cursor) { bubble.appendChild(cursor); }
+    bubble.classList.remove("hide"); scrollBottom();
+  };
+
+  try {
+    const resp = await fetch("/api/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, message: text, llm_override: override }),
+    });
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    let thinking = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf("\n\n")) >= 0) {
+        const raw = buf.slice(0, i); buf = buf.slice(i + 2);
+        if (!raw.startsWith("data:")) continue;
+        let ev; try { ev = JSON.parse(raw.slice(5)); } catch { continue; }
+
+        if (ev.type === "reasoning_delta") {
+          if (!thinking) thinking = addThinking();
+          thinking.push(ev.text);
+        } else if (ev.type === "assistant_delta") {
+          if (thinking) { thinking.finish(); thinking._finished = true; thinking = null; }
+          showCursor(); appendAnswer(ev.text);
+        } else if (ev.type === "tool_call") {
+          hideCursor();
+          if (thinking) { thinking.finish(); thinking._finished = true; thinking = null; }
+          const card = addToolCard(ev.name); card.setInput(ev.arguments);
+          card._id = ev.id; window.__cards = window.__cards || {}; window.__cards[ev.id] = card;
+          bubble.classList.add("hide"); answer = "";
+        } else if (ev.type === "tool_result") {
+          const card = (window.__cards || {})[ev.id];
+          if (card) card.setOutput(ev.result);
+        } else if (ev.type === "elicitation") {
+          hideCursor();
+          if (thinking) { thinking.finish(); thinking._finished = true; thinking = null; }
+          const f = makeFold("elicit", "Elicitation · " + esc(ev.message), "等待输入");
+          f.fold.classList.add("open");
+          openElicitation(ev);
+        } else if (ev.type === "error") {
+          hideCursor(); addError(ev.message);
+        } else if (ev.type === "done") {
+          hideCursor();
+          if (thinking) { thinking.finish(); thinking = null; }
+          if (!answer) bubble.classList.add("hide");
+        }
+      }
+    }
+  } catch (e) {
+    hideCursor(); appendAnswer("\n[连接中断] " + e);
+  } finally {
+    hideCursor(); busy = false; sendBtn.disabled = false;
+  }
+}
+
+sendBtn.onclick = () => { const v = input.value.trim(); if (v) { input.value = ""; autosize(); send(v); } };
+input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); const v = input.value.trim(); if (v) { input.value = ""; autosize(); send(v); } }
+});
+function autosize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 120) + "px"; }
+input.addEventListener("input", autosize);
+
+document.querySelectorAll(".chip").forEach((c) => c.onclick = () => send(c.dataset.q));
+
+/* clear */
+$("#btnClear").onclick = () => {
+  if (busy) return;
+  thread.innerHTML = ""; window.__cards = {};
+  greeting();
+  fetch("/api/session/" + sessionId + "/reset", { method: "POST" }).catch(() => {});
+};
+
+function greeting() {
+  const b = document.createElement("div"); b.className = "bubble";
+  b.innerHTML = "你好！我可以调用本页注册的 MCP 工具。<br>试试下方快捷按钮：<b>订餐桌</b> / <b>支付确认</b> 会弹出 elicitation 表单；右上角 ⚙️ 可覆盖模型设置。";
+  const row = document.createElement("div"); row.className = "row bot";
+  row.appendChild(b); thread.appendChild(row);
+}
+greeting();
+</script>
+</body>
+</html>
