@@ -31,7 +31,7 @@ from fastmcp.server.elicitation import AcceptedElicitation
 from openai import OpenAI
 from pydantic import BaseModel, BeforeValidator, Field, StringConstraints, create_model
 
-from . import chat as chat_bridge
+from . import chat_agentscope as chat_bridge
 from .settings import settings
 
 _STATIC_DIR = Path(__file__).parent / "static"

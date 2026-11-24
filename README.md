@@ -116,6 +116,23 @@ Terminal demo client ─► POST/GET/DELETE /mcp  (JSON-RPC + SSE)
 FastAPI also serves / (chat UI) and /healthz
 ```
 
+### Branches
+
+| Branch | Chat bridge | Agent loop |
+| --- | --- | --- |
+| `main` | `chat.py` — hand-rolled OpenAI function-calling loop | manual `stream_once` + tool dispatch |
+| `agentscope` | `chat_agentscope.py` — [AgentScope](https://github.com/agentscope-ai/agentscope) `Agent.reply_stream` | framework ReAct loop |
+
+Both expose the identical SSE event contract, so the browser UI is
+unchanged. The `agentscope` branch replaces the hand-written loop with
+AgentScope's `Agent` + `Toolkit(mcps=[...])`; MCP elicitation is
+bridged by subclassing `agentscope.mcp.MCPClient` and injecting an
+`elicitation_callback` into the MCP SDK `Client` (with
+`mode="legacy"` — the modern protocol era removed the
+server-initiated back-channel elicitation needs), and the agent's
+permission system is set to `BYPASS` since the demo's own
+elicitation modal already provides human-in-the-loop.
+
 Chat bridge (`chat.py`) implementation notes:
 
 - **True streaming** — the LLM runs with `stream=True`; reasoning and answer

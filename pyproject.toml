@@ -12,6 +12,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "openai>=1.40",
     "pydantic>=2.7",
+    "agentscope>=2.0.12",
 ]
 
 [dependency-groups]
