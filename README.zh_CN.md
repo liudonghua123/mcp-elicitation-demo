@@ -28,7 +28,9 @@ cp .env.example .env
 uv sync
 
 # 3. 启动服务
-uv run uvicorn src.mcp_elicitation_demo.server:app --port 8000
+uv run mcp-demo            # 常规运行
+uv run mcp-demo --reload   # 开发模式：代码改动自动重载
+# （等价于：uv run uvicorn src.mcp_elicitation_demo.server:app --port 8000）
 
 # 4a. 打开网页 Chat UI
 #     http://127.0.0.1:8000/
@@ -41,6 +43,22 @@ uv run python -m mcp_elicitation_demo.demo_client --ping-llm      # 测试 LLM �
 ```
 
 MCP 端点为 `http://127.0.0.1:8000/mcp`（streamable HTTP）；健康检查在 `/healthz`。
+
+### 通过 cloudflared 隧道暴露公网
+
+```bash
+# 一次性快速隧道（随机 trycloudflare.com 地址）
+cloudflared tunnel --url http://localhost:8000
+
+# 或命名隧道：在 ~/.cloudflared/config.yml 添加
+#   - hostname: mcp-demo.example.com
+#     service: http://localhost:8000
+# 然后运行
+cloudflared tunnel run <tunnel-name>
+```
+
+说明：MCP streamable HTTP 可直接穿透隧道使用
+（同一 `/mcp` 路径上的 POST JSON-RPC + GET SSE）。
 
 ## Elicitation 工作原理
 

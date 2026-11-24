@@ -1726,6 +1726,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
+    { name = "watchfiles" },
 ]
 
 [package.metadata]
@@ -1740,7 +1741,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8.0" }]
+dev = [
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "watchfiles", specifier = ">=0.24" },
+]
 
 [[package]]
 name = "mcp-types"

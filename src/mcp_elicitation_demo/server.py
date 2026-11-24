@@ -521,10 +521,22 @@ def extract_entities(text: str) -> dict[str, Any]:
         return {"error": "Model returned non-JSON content", "raw": content[:200]}
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Entry point: `uv run mcp-demo` (or `uv run mcp-demo --reload`)."""
+    import sys
+
     import uvicorn
 
-    uvicorn.run(app, host=settings.host, port=settings.port)
+    uvicorn.run(
+        "mcp_elicitation_demo.server:app",
+        host=settings.host,
+        port=settings.port,
+        reload="--reload" in sys.argv,
+    )
+
+
+if __name__ == "__main__":
+    main()
 
 # Mount LAST so FastAPI routes (/, /healthz) keep priority; mcp_app serves /mcp.
 app.mount("/", mcp_app)
