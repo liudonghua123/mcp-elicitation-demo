@@ -27,9 +27,16 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from fastmcp import Context, FastMCP
-from fastmcp.server.elicitation import AcceptedElicitation
+from mcp.types import (
+    ElicitRequest,
+    ElicitRequestFormParams,
+    ElicitResult,
+    InputRequiredResult,
+)
 from openai import OpenAI
 from pydantic import BaseModel, BeforeValidator, Field, StringConstraints, create_model
+
+from fastmcp.server.elicitation import get_elicitation_schema
 
 from . import chat as chat_bridge
 from .settings import settings
@@ -320,8 +327,37 @@ def now_iso() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Elicitation tools - ask the user mid-call via ctx.elicit().
+# Elicitation tools - SEP-2322 guard pattern (modern 2026-07-28 era).
+#
+# The tool returns an `InputRequiredResult` carrying an embedded
+# `ElicitRequest`; the client fulfills it via its elicitation callback
+# and retries the SAME call with the answer in `ctx.input_responses`
+# (arguments are preserved across legs). This replaces the removed
+# server-initiated `ctx.elicit()` back-channel, so clients no longer
+# need mode="legacy".
 # ---------------------------------------------------------------------------
+
+def _elicit_request(key: str, message: str, schema: dict[str, Any]) -> InputRequiredResult:
+    """Build a single-elicitation InputRequiredResult."""
+    return InputRequiredResult(
+        input_requests={
+            key: ElicitRequest(
+                params=ElicitRequestFormParams(
+                    message=message, requested_schema=schema
+                )
+            )
+        }
+    )
+
+
+def _answered(ctx: Context) -> tuple[str, ElicitResult] | None:
+    """First (key, ElicitResult) pair from ctx.input_responses."""
+    if not ctx.input_responses:
+        return None
+    for key, result in ctx.input_responses.items():
+        return key, result
+    return None
+
 
 @mcp.tool
 async def book_table(
@@ -333,7 +369,7 @@ async def book_table(
     time: str | None = None,
     seating: str | None = None,
     extras: LenientList | None = None,
-) -> str:
+) -> str | InputRequiredResult:
     """Book a table.
 
     Pass any booking details the user already provided (name, party_size,
@@ -358,23 +394,31 @@ async def book_table(
 
     missing = [k for k in _BOOKING_FIELD_SPECS if k not in known]
     if missing:
-        result = await ctx.elicit(
-            message=(
-                f"Booking a table in {city}"
-                + (f" for {party_size} guests" if party_size else "")
-                + (f" on {date}" if date else "")
-                + (f" at {time}" if time else "")
-                + (f" ({seating})" if seating else "")
-                + f". Still need: {', '.join(missing)}"
-            ),
-            response_type=_booking_model_for(missing),
-        )
-        if not isinstance(result, AcceptedElicitation):
+        answered = _answered(ctx)
+        if answered is None:
+            # First leg: ask for the missing fields only.
+            model = _booking_model_for(missing)
+            schema = get_elicitation_schema(model)
+            schema.pop("title", None)
+            return _elicit_request(
+                "booking",
+                (
+                    f"Booking a table in {city}"
+                    + (f" for {party_size} guests" if party_size else "")
+                    + (f" on {date}" if date else "")
+                    + (f" at {time}" if time else "")
+                    + (f" ({seating})" if seating else "")
+                    + f". Still need: {', '.join(missing)}"
+                ),
+                schema,
+            )
+        _, result = answered
+        if result.action != "accept" or not result.content:
             past = {"decline": "declined", "cancel": "cancelled"}.get(
                 result.action, result.action
             )
             return f"Booking {past} by user."
-        known.update(result.data or {})
+        known.update(result.content)
 
     b = Booking(**known)
     code = f"BK-{random.randint(1000, 9999)}"
@@ -387,13 +431,21 @@ async def book_table(
 
 
 @mcp.tool
-async def confirm_payment(amount: float, ctx: Context) -> str:
+async def confirm_payment(amount: float, ctx: Context) -> str | InputRequiredResult:
     """Elicits a yes/no confirmation before (simulated) payment."""
-    result = await ctx.elicit(
-        message=f"Confirm payment of {amount:.2f} CNY?",
-        response_type=bool,  # builtin types are allowed; a yes/no widget is shown
-    )
-    if isinstance(result, AcceptedElicitation) and result.data is True:
+    answered = _answered(ctx)
+    if answered is None:
+        return _elicit_request(
+            "confirm",
+            f"Confirm payment of {amount:.2f} CNY?",
+            {
+                "type": "object",
+                "properties": {"value": {"type": "boolean"}},
+                "required": ["value"],
+            },
+        )
+    _, result = answered
+    if result.action == "accept" and (result.content or {}).get("value") is True:
         return f"Payment of {amount:.2f} CNY completed."
     if result.action == "cancel":
         return f"Payment dialog for {amount:.2f} CNY dismissed."
@@ -401,17 +453,21 @@ async def confirm_payment(amount: float, ctx: Context) -> str:
 
 
 @mcp.tool
-async def risk_score(amount: float, ctx: Context) -> str:
+async def risk_score(amount: float, ctx: Context) -> str | InputRequiredResult:
     """Elicits age, income and debt ratio, then returns a toy risk decision."""
-    result = await ctx.elicit(
-        message="Risk assessment needs a few details:",
-        response_type=Risk,
-    )
-    if not isinstance(result, AcceptedElicitation):
-        past = {"decline": "declined", "cancel": "cancelled"}.get(result.action, result.action)
+    answered = _answered(ctx)
+    if answered is None:
+        schema = get_elicitation_schema(Risk)
+        schema.pop("title", None)
+        return _elicit_request("risk", "Risk assessment needs a few details:", schema)
+    _, result = answered
+    if result.action != "accept" or not result.content:
+        past = {"decline": "declined", "cancel": "cancelled"}.get(
+            result.action, result.action
+        )
         return f"Risk assessment {past} by user."
 
-    r: Risk = result.data
+    r = Risk(**result.content)
     score = 0.0
     if r.age < 25:
         score += 1
