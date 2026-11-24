@@ -135,7 +135,8 @@ class ChatSession:
         client = Client(
             StreamableHttpTransport(_mcp_url()),
             elicitation_handler=elicitation_handler,
-            mode="legacy",  # keep server-initiated elicitation back-channel
+            # modern era (default 'auto'): the server uses the
+            # SEP-2322 guard pattern, no legacy back-channel needed
         )
         await self._stack.enter_async_context(client)
         self._mcp_client = client

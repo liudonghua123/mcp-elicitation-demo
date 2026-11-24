@@ -44,8 +44,12 @@ def make_elicitation_handler(auto: bool):
         """Build demo content for a given requested_schema (auto mode)."""
         props = schema.get("properties", {}) if isinstance(schema, dict) else {}
         names = set(props)
-        if names == {"name", "party_size", "date", "time"}:
-            return {"name": "Alice", "party_size": 4, "date": "2026-12-24", "time": "19:30"}
+        if "name" in names and "party_size" in names:
+            out = {"name": "Alice", "party_size": 4, "date": "2026-12-24",
+                   "time": "19:30", "seating": "hall"}
+            if "extras" in names:
+                out["extras"] = ["birthday"]
+            return out
         if names == {"age", "income", "debt_ratio"}:
             return {"age": 30, "income": 180000.0, "debt_ratio": 0.2}
         if names == {"value"}:  # scalar (bool) response_type is wrapped as {"value": ...}
@@ -137,14 +141,15 @@ async def run(auto: bool, decline: bool = False) -> None:
 
     callback = make_declining_handler() if decline else make_elicitation_handler(auto)
 
-    # mode="legacy" uses the classic initialize handshake (handshake-era
-    # protocol), which keeps the server->client elicitation back-channel.
-    # The 2026-07-28 protocol removed it in favor of the input-required
-    # retry loop; pinning legacy keeps the classic ctx.elicit() demo simple.
+    # mode="auto" negotiates the modern 2026-07-28 protocol. The
+    # server's elicitation tools use the SEP-2322 guard pattern:
+    # they return an InputRequiredResult, the SDK's driver fires
+    # our elicitation_callback for each embedded request, then
+    # retries the call with the answers. No legacy pinning needed.
     async with Client(
         streamable_http_client(url),
         elicitation_callback=callback,
-        mode="legacy",
+        mode="auto",
     ) as client:
         _print("Initialized", f"server: {client.server_info.name}")
 
