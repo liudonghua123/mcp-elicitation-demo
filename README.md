@@ -28,7 +28,9 @@ cp .env.example .env
 uv sync
 
 # 3. Start the server
-uv run uvicorn src.mcp_elicitation_demo.server:app --port 8000
+uv run mcp-demo            # production-style run
+uv run mcp-demo --reload   # dev: auto-reload on code changes
+# (equivalent: uv run uvicorn src.mcp_elicitation_demo.server:app --port 8000)
 
 # 4a. Open the chat UI
 #     http://127.0.0.1:8000/
@@ -41,6 +43,22 @@ uv run python -m mcp_elicitation_demo.demo_client --ping-llm      # check LLM en
 ```
 
 The MCP endpoint is `http://127.0.0.1:8000/mcp` (streamable HTTP); health check at `/healthz`.
+
+### Public URL via cloudflared tunnel
+
+```bash
+# one-off quick tunnel (random trycloudflare.com URL)
+cloudflared tunnel --url http://localhost:8000
+
+# or a named tunnel: add to ~/.cloudflared/config.yml
+#   - hostname: mcp-demo.example.com
+#     service: http://localhost:8000
+# then run
+cloudflared tunnel run <tunnel-name>
+```
+
+Note: MCP streamable HTTP works through the tunnel as-is
+(POST JSON-RPC + GET SSE on the same `/mcp` path).
 
 ## How elicitation works
 
