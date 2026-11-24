@@ -69,9 +69,10 @@ class _BrowserElicitClient(MCPClient):
     MCP SDK client. The callback awaits a Future resolved by the
     browser's POST /api/elicitation/respond.
 
-    mode='legacy' is required: the modern protocol era (2026-07-28,
-    what mcp 2.x 'auto' mode negotiates by default) removed the
-    server-initiated back-channel that elicitation needs.
+    mode='auto' (modern 2026-07-28): the server's tools use the
+    SEP-2322 guard pattern - the SDK's input-required driver fires
+    this callback for embedded ElicitRequests and retries the call
+    with the answers, so no legacy back-channel is needed.
     """
 
     # Set per ChatSession; emits the SSE elicitation event and
@@ -89,11 +90,9 @@ class _BrowserElicitClient(MCPClient):
                 return mcp_types.ElicitResult(action="decline", content=None)
             return await bridge(params)
 
-        # 'legacy' forces the initialize handshake (newest handshake-era
-        # version), keeping server-initiated elicitation on the wire.
         return MCPSdkClient(
             transport,
-            mode="legacy",
+            mode="auto",
             elicitation_callback=on_elicit,
         )
 
