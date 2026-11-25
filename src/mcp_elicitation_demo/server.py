@@ -38,7 +38,7 @@ from pydantic import BaseModel, BeforeValidator, Field, StringConstraints, creat
 
 from fastmcp.server.elicitation import get_elicitation_schema
 
-from . import chat as chat_bridge
+from . import chat_deepagent as chat_bridge
 from .settings import settings
 
 _STATIC_DIR = Path(__file__).parent / "static"

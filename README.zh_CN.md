@@ -94,15 +94,31 @@ fastmcp 4.x 两个值得注意的 API 细节：
 ## 架构
 
 ```
-浏览器 Chat UI ──► POST /api/chat (SSE) ──► ChatSession（GLM function calling 循环）
-                     │                          └── 内置 MCP Client ──► /mcp（自连）
+浏览器 Chat UI ──► POST /api/chat (SSE) ──► ChatSession（LangGraph 上的 DeepAgents 图）
+                     │                          └── MCPAdapter ──► /mcp（自连）
                      │                                ├── 普通工具直接执行
-                     │                                └── elicitation 工具 → ctx.elicit()
+                     │                                └── elicitation → LangGraph interrupt()
                      │                                      → SSE 事件 → 浏览器弹窗表单
                      │                                      → POST /api/elicitation/respond
+                     │                                      → Command(resume=...) → 恢复同一个图运行
                      └── MCP 客户端/其它工具 ──► POST/GET/DELETE /mcp (JSON-RPC + SSE)
 FastAPI 同时提供 /、/healthz
 ```
+
+### 分支
+
+| 分支 | Chat 桥 | Agent 循环 | Elicitation 桥 |
+| --- | --- | --- | --- |
+| `main` | `chat.py` | 手写 OpenAI function calling | `asyncio.Future` |
+| `agentscope` | `chat_agentscope.py` | AgentScope `Agent.reply_stream` | MCP SDK callback + `Future` |
+| `deepagent`（本分支） | `chat_deepagent.py` | LangGraph 上的 DeepAgents SDK | LangGraph `interrupt()` / `Command(resume=...)` |
+
+各分支 SSE 事件契约完全一致，浏览器 UI 无需改动。本分支用
+`create_deep_agent(model=..., tools=...)` 取代手写循环；MCP 工具由新版
+`langchain.mcp.MCPAdapter`（`langchain[mcp]>=1.4`，beta）提供。适配器把服务端的
+`InputRequiredResult` 转换为 LangGraph `MCPElicitationInterrupt`：每个表单请求
+通过 SSE 发给浏览器，用户提交后用 `Command(resume={"responses": ...})` 恢复
+**同一个**图运行（配合 `InMemorySaver` checkpointer 与固定 `thread_id`）。
 
 `server.py` 中沉淀的 FastMCP 4.x 集成要点：
 
@@ -113,20 +129,21 @@ FastAPI 同时提供 /、/healthz
 - `http_app()` 内部已在 `/mcp` 提供 JSON-RPC 路由，所以 FastAPI 挂载点是
   `"/"`，且路由注册必须写在挂载**之前**。
 
-## Chat 桥（chat.py）实现要点
+## Chat 桥（chat_deepagent.py）实现要点
 
-- **真流式**：GLM 走 OpenAI SDK `stream=True`；思考链（`reasoning_content`）与正文
-  分别以 `reasoning_delta` / `assistant_delta` 增量推送；工具调用参数按
-  `index` 增量拼装。阻塞调用包在 `asyncio.to_thread`，不阻塞事件推送。
+- **流式**：`agent.astream(..., stream_mode=["messages", "updates"])`；
+  `AIMessageChunk` 推送 `reasoning_delta` / `assistant_delta`，工具调用参数按
+  `index` 增量拼装并与 `ToolMessage` 配对，一次调用只发一组
+  `tool_call` + `tool_result`。
 - **LLM 覆盖**：`POST /api/chat` 可携带 `llm_override: {base_url, api_key, model}`，
-  逐会话覆盖 `.env` 默认值；设置面板存于浏览器 localStorage。
-- elicitation 通过 `asyncio.Future` 桥接：SSE 发 `elicitation` 事件给浏览器，
-  浏览器提交表单到 `/api/elicitation/respond`，`Future.set_result` 唤醒工具继续。
+  逐会话覆盖 `.env` 默认值；重建 agent 时复用 checkpointer 与 thread id，
+  所以改设置不会清空历史。
+- **Elicitation**：SSE 的 `elicitation` 事件携带适配后的 `requested_schema`；
+  浏览器提交到 `/api/elicitation/respond` 后唤醒等待的 Future，图从中断处恢复。
 - SSE 陷阱：结束哨兵必须与事件走**同一条**
   `loop.call_soon_threadsafe(queue.put_nowait, ...)` 通道；若哨兵直接
   `queue.put_nowait`，会抢在已调度事件之前导致流被截断。
-- fastmcp `list_tools()` 返回扁平 list；工具 schema 字段是 `input_schema`；
-  给 GLM 的 function schema 只保留 `type`/`description`/`enum`。
+- `langchain.mcp` 处于 beta，导入时出现 `LangChainBetaWarning` 属正常现象。
 
 ## Chat UI（首页）
 

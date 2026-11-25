@@ -124,30 +124,50 @@ The landing page is a mobile-first, single-file chat app:
 ## Architecture
 
 ```
-Browser chat UI ─► POST /api/chat (SSE) ─► ChatSession (GLM function-calling loop)
-                     │                          └── built-in MCP Client ──► /mcp (self)
+Browser chat UI ─► POST /api/chat (SSE) ─► ChatSession (DeepAgents graph on LangGraph)
+                     │                          └── MCPAdapter ──► /mcp (self)
                      │                                ├── plain tools run directly
-                     │                                └── elicitation tools → ctx.elicit()
+                     │                                └── elicitation → LangGraph interrupt()
                      │                                      → SSE event → browser modal form
                      │                                      → POST /api/elicitation/respond
+                     │                                      → Command(resume=...) → same graph run
 Terminal demo client ─► POST/GET/DELETE /mcp  (JSON-RPC + SSE)
 FastAPI also serves / (chat UI) and /healthz
 ```
 
-Chat bridge (`chat.py`) implementation notes:
+### Branches
 
-- **True streaming** — the LLM runs with `stream=True`; reasoning and answer
-  deltas are forwarded as `reasoning_delta` / `assistant_delta`; streamed tool
-  calls are assembled by `index`. Blocking LLM calls run in `asyncio.to_thread`
-  so elicitation events keep flowing.
+| Branch | Chat bridge | Agent loop | Elicitation bridge |
+| --- | --- | --- | --- |
+| `main` | `chat.py` | hand-rolled OpenAI function calling | `asyncio.Future` |
+| `agentscope` | `chat_agentscope.py` | AgentScope `Agent.reply_stream` | MCP SDK callback + `Future` |
+| `deepagent` (this branch) | `chat_deepagent.py` | DeepAgents SDK on LangGraph | LangGraph `interrupt()` / `Command(resume=...)` |
+
+All branches expose the identical SSE event contract, so the browser UI is
+unchanged. This branch replaces the hand-written loop with
+`create_deep_agent(model=..., tools=...)`; MCP tools come from the modern
+`langchain.mcp.MCPAdapter` (`langchain[mcp]>=1.4`, beta). The adapter converts a
+server's `InputRequiredResult` into a LangGraph `MCPElicitationInterrupt` —
+each form request is emitted to the browser, and the submitted answers are
+returned as `Command(resume={"responses": ...})`, resuming the **same** graph
+run via an `InMemorySaver` checkpointer and a stable `thread_id`.
+
+DeepAgents bridge (`chat_deepagent.py`) implementation notes:
+
+- **Streaming** — `agent.astream(..., stream_mode=["messages", "updates"])`:
+  `AIMessageChunk` yields `reasoning_delta` / `assistant_delta`, tool-call
+  chunks are accumulated by `index` and paired with their `ToolMessage`
+  for one `tool_call` + `tool_result` pair.
 - **LLM overrides** — `POST /api/chat` accepts
-  `llm_override: {base_url, api_key, model}` to override `.env` per session.
-- **Elicitation bridge** — an SSE `elicitation` event opens the browser modal;
-  the answer POSTs to `/api/elicitation/respond` and resolves an
-  `asyncio.Future` back into the tool.
+  `llm_override: {base_url, api_key, model}`; rebuilding the agent keeps the
+  checkpointer and thread id, so changing settings does not erase history.
+- **Elicitation** — the SSE `elicitation` event carries the adapted
+  `requested_schema`; the browser POSTs to `/api/elicitation/respond`, which
+  resolves the pending future and lets the graph resume from its interrupt.
 - **SSE pitfall** — the end-of-stream sentinel must go through the same
   `loop.call_soon_threadsafe(queue.put_nowait, ...)` channel as events; a direct
   `queue.put_nowait` overtakes already-scheduled events and truncates the stream.
+- `langchain.mcp` is in beta, so a `LangChainBetaWarning` on import is expected.
 
 FastMCP 4.x integration notes baked into `server.py`:
 
